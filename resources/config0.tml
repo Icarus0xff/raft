@@ -1,0 +1,4 @@
+servers = ["localhost:2001", "localhost:2002"]
+bind = "localhost"
+port = 2000
+hostName = "localhost"
