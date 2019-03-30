@@ -29,8 +29,9 @@ type State struct {
 	votedFor    int32
 	log         []string
 
-	myVotesCount uint32
-	NodeCount    uint32
+	myVotesCount    uint32
+	NodeCount       uint32
+	LeaderHeartBeat chan struct{}
 }
 
 const notVoted = -1
@@ -63,5 +64,5 @@ func (s *State) GetVoteFromCandidate() uint32 {
 func newState() *State {
 	c := uint32(len(config.Config.Servers) + 1)
 	return &State{0, notVoted,
-		[]string{}, 0, c}
+		[]string{}, 0, c, make(chan struct{})}
 }

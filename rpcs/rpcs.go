@@ -15,7 +15,7 @@ type Args struct {
 }
 
 type Results struct {
-	Term     int
+	Term     uint32
 	IsSucess bool
 }
 
@@ -23,7 +23,14 @@ type Rpc int
 
 func (r *Rpc) AppendEntries(args *Args, reply *Results) error {
 	log.Debug("AppendEntries")
+	reply = new(Results)
+	if args.Term < state.GetGlobalState().GetTerm() {
+		*reply = Results{state.GetGlobalState().GetTerm(), false}
+		return nil
+
+	}
 	*reply = Results{1, true}
+	state.GetGlobalState().LeaderHeartBeat <- struct{}{}
 	log.Debug("AppendEntries end")
 	return nil
 }

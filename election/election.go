@@ -2,6 +2,7 @@ package election
 
 import (
 	"github.com/ngaut/log"
+	"math/rand"
 	"net/rpc"
 	"raft/config"
 	"raft/rpcs"
@@ -16,48 +17,94 @@ const (
 	leader
 )
 
-type role int
+// HeartTimerBase must less than TimeoutBase
+const TimeoutBase = 3
+const HeartTimerBase = 2
 
-var r role
 var gs = state.GetGlobalState()
 
-const electionTimeout = time.Second * 20
+type role struct {
+	r int
+}
+
+func newRole() *role {
+	return &role{follower}
+}
+
+func (r *role) f() role {
+	log.Debug("follower stage")
+	timeoutTimer := time.NewTimer(time.Second * TimeoutBase)
+	for {
+		ri := rand.Intn(10) + TimeoutBase
+		timeout := time.Second * time.Duration(ri)
+
+		log.Debugf("random timeout is %+v", timeout)
+
+		select {
+		case <-timeoutTimer.C:
+			log.Debug("follower timeout, prepare to vote")
+			timeoutTimer.Reset(timeout)
+			if candidateStage() == leader {
+				sendHeartBeatsForever()
+			}
+		case <-gs.LeaderHeartBeat:
+			log.Debugf("get heart beat form leader")
+			timeoutTimer.Reset(timeout)
+			continue
+		}
+	}
+	return role{}
+}
 
 func Start() {
-	log.Debugf("current role: %v, state: %+v", r, gs)
+	r := newRole()
+	log.Debugf("current role is %v", r)
+	rand.Seed(42)
+	r.f()
 
-	select {
-	case <-time.After(electionTimeout):
-		log.Debug("follower timeout, prepare to vote.")
-	}
-	candidateStage()
-	if r == leader {
-		for _, server := range config.Config.Servers {
-			go leaderHeartBeat(server)
+}
+
+func sendHeartBeatsForever() {
+	for {
+		select {
+		case <-time.After(time.Second * time.Duration(HeartTimerBase)):
+			log.Debugf("send heart beat")
+			for _, server := range config.Config.Servers {
+				go leaderHeartBeat(server)
+			}
 		}
 	}
 }
 
-func candidateStage() {
+func candidateStage() int {
 	gs.ReElect()
-	r = candidate
 	gs.AddTerm()
 
 	wg := sync.WaitGroup{}
 	wg.Add(len(config.Config.Servers))
 	log.Debugf("current state is: %+v", gs)
+	ch := make(chan uint32, len(config.Config.Servers))
 	for _, server := range config.Config.Servers {
 		go func(s string) {
 			defer wg.Done()
-			requestForVote(s)
+			ch <- requestForVote(s)
 		}(server)
 	}
 	wg.Wait()
-	log.Debug("end candidateStage")
+
+	var sum uint32
+	for i := 0; i < len(config.Config.Servers); i++ {
+		sum += <-ch
+	}
+	if sum >= gs.NodeCount/2+1 {
+		log.Debug("win this vote, become leader, count:", sum)
+		return leader
+	}
+	return candidate
 }
 
 func leaderHeartBeat(server string) {
-	log.Debug("append entry")
+	log.Debug("append entry to" + server)
 	args := &rpcs.Args{Term: gs.GetTerm(), LeaderId: state.MyID, Entries: nil}
 	reply := new(rpcs.Results)
 
@@ -65,7 +112,7 @@ func leaderHeartBeat(server string) {
 
 }
 
-func requestForVote(server string) {
+func requestForVote(server string) uint32 {
 	log.Debug("rpc for vote, server is:", server)
 
 	args := &rpcs.RequestVoteArgs{
@@ -79,22 +126,22 @@ func requestForVote(server string) {
 
 	log.Debugf("rpc reply is: %+v from: %v", reply, server)
 	if reply.VoteGranted {
-		c := gs.GetVoteFromCandidate()
-		if c >= gs.NodeCount/2+1 {
-			r = leader
-			log.Debug("win this vote, become leader, count:", c)
-		}
+		return 1
 	}
+	return 0
 }
 
-func callRpc(server string, args interface{}, reply interface{}, s string) {
+func callRpc(server string, args interface{}, reply interface{}, s string) error {
 	client, err := rpc.DialHTTP("tcp", server)
 	if err != nil {
-		log.Fatal("dialing:", err)
+		log.Error("dialing:", err)
+		return err
 	}
 
 	err = client.Call(s, args, reply)
 	if err != nil {
-		log.Error("call Rpc.RequestVote error:", err)
+		log.Error("call rpc error:", err)
 	}
+
+	return nil
 }
