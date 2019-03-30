@@ -115,8 +115,8 @@ func isReqVotesSucceed() bool {
 
 func sendHeartBeat(server string) {
 	log.Debug("append entry to" + server)
-	args := &rpcs.Args{Term: gs.GetTerm(), LeaderId: state.MyID, Entries: nil}
-	reply := new(rpcs.Results)
+	args := &rpcs.AppendEntriesArgs{Term: gs.GetTerm(), LeaderId: state.MyID, Entries: nil}
+	reply := new(rpcs.AppendEntriesReply)
 
 	err := utils.CallRpc(server, args, reply, "Rpc.AppendEntries")
 	if err != nil {
@@ -127,13 +127,13 @@ func sendHeartBeat(server string) {
 func requestForVote(server string) uint32 {
 	log.Debug("rpc for vote, server is:", server)
 
-	args := &rpcs.RequestVoteArgs{
+	args := &rpcs.ReqVoteArgs{
 		Term:         gs.GetTerm(),
 		CandidateId:  state.MyID,
 		LastLogIndex: 1,
 		LastLogTerm:  1,
 	}
-	reply := new(rpcs.RequestVoteReply)
+	reply := new(rpcs.ReqVoteReply)
 	err := utils.CallRpc(server, args, reply, "Rpc.RequestVote")
 	if err != nil {
 		log.Error("send vote request error", err)

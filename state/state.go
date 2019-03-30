@@ -32,6 +32,10 @@ type State struct {
 	votedFor    int32
 	log         []string
 
+	inner
+}
+
+type inner struct {
 	myVotesCount    uint32
 	NodeCount       uint32
 	LeaderHeartBeat chan struct{}
@@ -66,6 +70,7 @@ func (s *State) GetVoteFromCandidate() uint32 {
 
 func newState() *State {
 	c := uint32(len(config.Config.Servers) + 1)
-	return &State{0, notVoted,
-		[]string{}, 0, c, make(chan struct{})}
+	return &State{0, notVoted, []string{},
+		inner{0, c, make(chan struct{})},
+	}
 }

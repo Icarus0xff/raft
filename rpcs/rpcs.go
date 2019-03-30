@@ -5,7 +5,7 @@ import (
 	"raft/state"
 )
 
-type Args struct {
+type AppendEntriesArgs struct {
 	Term         uint32
 	LeaderId     uint32
 	prevLogIndex int
@@ -14,44 +14,44 @@ type Args struct {
 	leaderCommit int
 }
 
-type Results struct {
+type AppendEntriesReply struct {
 	Term      uint32
 	IsSucceed bool
 }
 
 type Rpc int
 
-func (r *Rpc) AppendEntries(args *Args, reply *Results) error {
+func (r *Rpc) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply) error {
 	log.Debug("AppendEntries")
-	reply = new(Results)
+	reply = new(AppendEntriesReply)
 	if args.Term < state.GetGlobalState().GetTerm() {
-		*reply = Results{state.GetGlobalState().GetTerm(), false}
+		*reply = AppendEntriesReply{state.GetGlobalState().GetTerm(), false}
 		return nil
 
 	}
-	*reply = Results{1, true}
+	*reply = AppendEntriesReply{1, true}
 	state.GetGlobalState().LeaderHeartBeat <- struct{}{}
 	log.Debug("AppendEntries end")
 	return nil
 }
 
-type RequestVoteArgs struct {
+type ReqVoteArgs struct {
 	Term         uint32
 	CandidateId  uint32
 	LastLogIndex int
 	LastLogTerm  int
 }
 
-type RequestVoteReply struct {
+type ReqVoteReply struct {
 	Term        uint32
 	VoteGranted bool
 }
 
 var gs = state.GetGlobalState()
 
-func (r *Rpc) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) error {
+func (r *Rpc) RequestVote(args *ReqVoteArgs, reply *ReqVoteReply) error {
 	log.Debugf("args is: %+v", *args)
-	*reply = RequestVoteReply{Term: gs.GetTerm(), VoteGranted: false}
+	*reply = ReqVoteReply{Term: gs.GetTerm(), VoteGranted: false}
 	if args.Term < gs.GetTerm() {
 		log.Debug("term is less than current term")
 		return nil
