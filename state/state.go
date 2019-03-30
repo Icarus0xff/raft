@@ -19,7 +19,10 @@ func init() {
 	gState = newState()
 	hash := fnv.New32()
 	log.Debug("if the BindAddr generated:", config.Config.GetBindAddr())
-	hash.Write([]byte(config.Config.GetHostAddr()))
+	_, err := hash.Write([]byte(config.Config.GetHostAddr()))
+	if err != nil {
+		log.Fatal("gen hash error", err)
+	}
 	MyID = hash.Sum32()
 	log.Debug("my id is:", MyID)
 }
@@ -36,7 +39,7 @@ type State struct {
 
 const notVoted = -1
 
-func (s *State) ReElect() {
+func (s *State) ElectInit() {
 	atomic.StoreInt32(&s.votedFor, notVoted)
 	s.myVotesCount = 0
 }

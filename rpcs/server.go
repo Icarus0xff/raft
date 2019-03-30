@@ -11,12 +11,20 @@ import (
 func init() {
 	log.Debug("start rpc server")
 	r := new(Rpc)
-	rpc.Register(r)
+	err := rpc.Register(r)
+	if err != nil {
+		log.Fatal("register rpc server error", err)
+	}
 	rpc.HandleHTTP()
 
 	l, err := net.Listen("tcp", config.Config.GetBindAddr())
 	if err != nil {
 		log.Fatal("listen error:", err)
 	}
-	go http.Serve(l, nil)
+	go func() {
+		err := http.Serve(l, nil)
+		if err != nil {
+			log.Fatal("serve rpc error", err)
+		}
+	}()
 }

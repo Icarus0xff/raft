@@ -38,7 +38,12 @@ func init() {
 	log.Debug("flags is:", *path)
 
 	fd, err := os.Open(*path)
-	defer fd.Close()
+	defer func() {
+		err := fd.Close()
+		if err != nil {
+			log.Fatal("failed to close file", err)
+		}
+	}()
 	if err != nil {
 		log.Fatal("can't read config file:", err)
 	}

@@ -4,12 +4,14 @@ import (
 	"os"
 	"os/signal"
 	_ "raft/config"
-	"raft/election"
 	_ "raft/rpcs"
+	"raft/stateMachine"
 )
 
 func main() {
-	election.Start()
+
+	sm := stateMachine.NewRoleStateMachine()
+	sm.Run()
 
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt)

@@ -15,8 +15,8 @@ type Args struct {
 }
 
 type Results struct {
-	Term     uint32
-	IsSucess bool
+	Term      uint32
+	IsSucceed bool
 }
 
 type Rpc int
