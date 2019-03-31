@@ -4,13 +4,14 @@ import (
 	"os"
 	"os/signal"
 	_ "raft/config"
+	"raft/rpcs"
 	_ "raft/rpcs"
 	"raft/stateMachine"
 )
 
 func main() {
 
-	sm := stateMachine.NewRoleStateMachine()
+	sm := stateMachine.NewRoleStateMachine(rpcs.ClientRpc{})
 	sm.Run()
 
 	stop := make(chan os.Signal, 1)

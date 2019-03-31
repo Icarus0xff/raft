@@ -6,14 +6,13 @@ import (
 	"raft/config"
 	"raft/rpcs"
 	"raft/state"
-	"raft/utils"
 	"sync"
 	"time"
 )
 
 const (
 	follower = iota
-	candidate
+	Candidate
 	leader
 )
 
@@ -21,22 +20,22 @@ const (
 const timeoutBase = 3
 const heartTimerBase = 2
 
-var gs = state.GetGlobalState()
-
 type RoleStateMachine struct {
-	role int
+	Role   int
+	client rpcs.Callee
+	state  *state.State
 }
 
-func NewRoleStateMachine() *RoleStateMachine {
-	return &RoleStateMachine{follower}
+func NewRoleStateMachine(client rpcs.Callee) *RoleStateMachine {
+	return &RoleStateMachine{follower, client, state.GetGlobalState()}
 }
 
 func (r *RoleStateMachine) Run() {
 	for {
-		switch r.role {
+		switch r.Role {
 		case follower:
 			r.followerStage().Run()
-		case candidate:
+		case Candidate:
 			r.candidateStage().Run()
 		case leader:
 			r.leaderStage().Run()
@@ -53,19 +52,22 @@ func (r *RoleStateMachine) followerStage() *RoleStateMachine {
 	log.Debugf("random delta is %+v", delta)
 
 	<-timeoutTimer.C
-	return &RoleStateMachine{candidate}
+	r.Role = Candidate
+	return r
 }
 
 func (r *RoleStateMachine) candidateStage() *RoleStateMachine {
-	gs.ElectInit()
-	gs.AddTerm()
-	if isReqVotesSucceed() {
-		return &RoleStateMachine{leader}
+	r.state.ElectInit()
+	r.state.AddTerm()
+	if r.isReqVotesSucceed() {
+		r.Role = leader
+		return r
 	}
 
 	_, timeoutTimer := r.randomTimer()
 	<-timeoutTimer.C
-	return &RoleStateMachine{candidate}
+	r.Role = Candidate
+	return r
 }
 
 func (r *RoleStateMachine) leaderStage() *RoleStateMachine {
@@ -73,10 +75,11 @@ func (r *RoleStateMachine) leaderStage() *RoleStateMachine {
 	case <-time.After(time.Second * time.Duration(heartTimerBase)):
 		log.Debugf("send heart beat")
 		for _, server := range config.Config.Servers {
-			go sendHeartBeat(server)
+			go r.sendHeartBeat(server)
 		}
 	}
-	return &RoleStateMachine{leader}
+	r.Role = leader
+	return r
 }
 
 func (r *RoleStateMachine) randomTimer() (time.Duration, *time.Timer) {
@@ -86,8 +89,8 @@ func (r *RoleStateMachine) randomTimer() (time.Duration, *time.Timer) {
 	return timeout, timeoutTimer
 }
 
-func isReqVotesSucceed() bool {
-	log.Debugf("current state is: %+v", gs)
+func (r *RoleStateMachine) isReqVotesSucceed() bool {
+	log.Debugf("current state is: %+v", r.state)
 
 	wg := sync.WaitGroup{}
 	sc := len(config.Config.Servers)
@@ -97,7 +100,7 @@ func isReqVotesSucceed() bool {
 	for _, server := range config.Config.Servers {
 		go func(s string) {
 			defer wg.Done()
-			vsc <- requestForVote(s)
+			vsc <- r.requestForVote(s)
 		}(server)
 	}
 	wg.Wait()
@@ -106,35 +109,36 @@ func isReqVotesSucceed() bool {
 	for i := 0; i < sc; i++ {
 		sum += <-vsc
 	}
-	if sum >= gs.NodeCount/2+1 {
-		log.Debug("win this vote, become leader, count:", sum)
+	if sum >= r.state.NodeCount/2+1 {
+		log.Debug("win this term, become leader, count:", sum)
 		return true
 	}
 	return false
 }
 
-func sendHeartBeat(server string) {
+func (r *RoleStateMachine) sendHeartBeat(server string) {
 	log.Debug("append entry to" + server)
-	args := &rpcs.AppendEntriesArgs{Term: gs.GetTerm(), LeaderId: state.MyID, Entries: nil}
+	args := &rpcs.AppendEntriesArgs{Term: r.state.GetTerm(), LeaderId: state.MyID, Entries: nil}
 	reply := new(rpcs.AppendEntriesReply)
 
-	err := utils.CallRpc(server, args, reply, "Rpc.AppendEntries")
+	rpc := rpcs.ClientRpc{}
+	err := rpc.Call("Rpc.AppendEntries", server, args, reply)
 	if err != nil {
 		log.Error("send heart beat error", err)
 	}
 }
 
-func requestForVote(server string) uint32 {
+func (r *RoleStateMachine) requestForVote(server string) uint32 {
 	log.Debug("rpc for vote, server is:", server)
 
 	args := &rpcs.ReqVoteArgs{
-		Term:         gs.GetTerm(),
+		Term:         r.state.GetTerm(),
 		CandidateId:  state.MyID,
 		LastLogIndex: 1,
 		LastLogTerm:  1,
 	}
 	reply := new(rpcs.ReqVoteReply)
-	err := utils.CallRpc(server, args, reply, "Rpc.RequestVote")
+	err := r.client.Call("Rpc.RequestVote", server, args, reply)
 	if err != nil {
 		log.Error("send vote request error", err)
 	}
