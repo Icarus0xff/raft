@@ -10,34 +10,36 @@ import (
 	"time"
 )
 
-const (
-	follower = iota
-	Candidate
-	leader
-)
-
 // heartTimerBase must less than timeoutBase
 const timeoutBase = 3
 const heartTimerBase = 2
 
 type RoleStateMachine struct {
-	Role   int
+	Role   *state.Role
 	client rpcs.Callee
 	state  *state.State
 }
 
+func NewRoleStateMachineDefault() *RoleStateMachine {
+	r := state.GetGlobalRolePtr()
+	*r = state.Follower
+	return &RoleStateMachine{r, rpcs.RealCall{}, state.GetGlobalState()}
+}
+
 func NewRoleStateMachine(client rpcs.Callee) *RoleStateMachine {
-	return &RoleStateMachine{follower, client, state.GetGlobalState()}
+	r := state.GetGlobalRolePtr()
+	*r = state.Follower
+	return &RoleStateMachine{r, client, state.GetGlobalState()}
 }
 
 func (r *RoleStateMachine) Run() {
 	for {
-		switch r.Role {
-		case follower:
+		switch *r.Role {
+		case state.Follower:
 			r.followerStage().Run()
-		case Candidate:
+		case state.Candidate:
 			r.candidateStage().Run()
-		case leader:
+		case state.Leader:
 			r.leaderStage().Run()
 		}
 	}
@@ -52,7 +54,8 @@ func (r *RoleStateMachine) followerStage() *RoleStateMachine {
 	log.Debugf("random delta is %+v", delta)
 
 	<-timeoutTimer.C
-	r.Role = Candidate
+
+	*r.Role = state.Candidate
 	return r
 }
 
@@ -60,13 +63,16 @@ func (r *RoleStateMachine) candidateStage() *RoleStateMachine {
 	r.state.ElectInit()
 	r.state.AddTerm()
 	if r.isReqVotesSucceed() {
-		r.Role = leader
+		*r.Role = state.Leader
 		return r
 	}
 
 	_, timeoutTimer := r.randomTimer()
 	<-timeoutTimer.C
-	r.Role = Candidate
+	*r.Role = state.Candidate
+	if state.GetGlobalState().VoteForMyself() {
+		state.GetGlobalState().GetVoteFromCandidate()
+	}
 	return r
 }
 
@@ -78,7 +84,7 @@ func (r *RoleStateMachine) leaderStage() *RoleStateMachine {
 			go r.sendHeartBeat(server)
 		}
 	}
-	r.Role = leader
+	*r.Role = state.Leader
 	return r
 }
 
@@ -118,10 +124,11 @@ func (r *RoleStateMachine) isReqVotesSucceed() bool {
 
 func (r *RoleStateMachine) sendHeartBeat(server string) {
 	log.Debug("append entry to" + server)
-	args := &rpcs.AppendEntriesArgs{Term: r.state.GetTerm(), LeaderId: state.MyID, Entries: nil}
+	args := &rpcs.AppendEntriesArgs{Term: r.state.GetTerm(),
+		LeaderId: int32(state.MyID), Entries: nil}
 	reply := new(rpcs.AppendEntriesReply)
 
-	rpc := rpcs.ClientRpc{}
+	rpc := rpcs.RealCall{}
 	err := rpc.Call("Rpc.AppendEntries", server, args, reply)
 	if err != nil {
 		log.Error("send heart beat error", err)

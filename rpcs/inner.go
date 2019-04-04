@@ -7,7 +7,7 @@ import (
 
 type AppendEntriesArgs struct {
 	Term         uint32
-	LeaderId     uint32
+	LeaderId     int32
 	prevLogIndex int
 	prevLogTerm  int
 	Entries      []int

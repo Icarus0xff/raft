@@ -11,7 +11,7 @@ import (
 
 func main() {
 
-	sm := stateMachine.NewRoleStateMachine(rpcs.ClientRpc{})
+	sm := stateMachine.NewRoleStateMachine(rpcs.RealCall{})
 	sm.Run()
 
 	stop := make(chan os.Signal, 1)
