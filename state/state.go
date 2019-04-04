@@ -9,14 +9,14 @@ import (
 
 var MyID uint32
 
-var gState *State
+var gs *State
 
 func GetGlobalState() *State {
-	return gState
+	return gs
 }
 
 func init() {
-	gState = newState()
+	gs = newState()
 	hash := fnv.New32()
 	log.Debug("if the BindAddr generated:", config.Config.GetBindAddr())
 	_, err := hash.Write([]byte(config.Config.GetHostAddr()))

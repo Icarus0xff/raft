@@ -5,7 +5,7 @@ import (
 	"math/rand"
 	"raft/config"
 	"raft/rpcs"
-	"raft/state"
+	. "raft/state"
 	"sync"
 	"time"
 )
@@ -15,31 +15,31 @@ const timeoutBase = 3
 const heartTimerBase = 2
 
 type RoleStateMachine struct {
-	Role   *state.Role
-	client rpcs.Callee
-	state  *state.State
+	Role        *Role
+	client      rpcs.Callee
+	globalState *State
 }
 
 func NewRoleStateMachineDefault() *RoleStateMachine {
-	r := state.GetGlobalRolePtr()
-	*r = state.Follower
-	return &RoleStateMachine{r, rpcs.RealCall{}, state.GetGlobalState()}
+	r := GetGlobalRolePtr()
+	*r = Follower
+	return &RoleStateMachine{r, rpcs.RealCall{}, GetGlobalState()}
 }
 
 func NewRoleStateMachine(client rpcs.Callee) *RoleStateMachine {
-	r := state.GetGlobalRolePtr()
-	*r = state.Follower
-	return &RoleStateMachine{r, client, state.GetGlobalState()}
+	r := GetGlobalRolePtr()
+	*r = Follower
+	return &RoleStateMachine{r, client, GetGlobalState()}
 }
 
 func (r *RoleStateMachine) Run() {
 	for {
 		switch *r.Role {
-		case state.Follower:
+		case Follower:
 			r.followerStage().Run()
-		case state.Candidate:
+		case Candidate:
 			r.candidateStage().Run()
-		case state.Leader:
+		case Leader:
 			r.leaderStage().Run()
 		}
 	}
@@ -55,23 +55,23 @@ func (r *RoleStateMachine) followerStage() *RoleStateMachine {
 
 	<-timeoutTimer.C
 
-	*r.Role = state.Candidate
+	*r.Role = Candidate
 	return r
 }
 
 func (r *RoleStateMachine) candidateStage() *RoleStateMachine {
-	r.state.ElectInit()
-	r.state.AddTerm()
+	r.globalState.ElectInit()
+	r.globalState.AddTerm()
 	if r.isReqVotesSucceed() {
-		*r.Role = state.Leader
+		*r.Role = Leader
 		return r
 	}
 
 	_, timeoutTimer := r.randomTimer()
 	<-timeoutTimer.C
-	*r.Role = state.Candidate
-	if state.GetGlobalState().VoteForMyself() {
-		state.GetGlobalState().GetVoteFromCandidate()
+	*r.Role = Candidate
+	if GetGlobalState().VoteForMyself() {
+		GetGlobalState().GetVoteFromCandidate()
 	}
 	return r
 }
@@ -84,7 +84,7 @@ func (r *RoleStateMachine) leaderStage() *RoleStateMachine {
 			go r.sendHeartBeat(server)
 		}
 	}
-	*r.Role = state.Leader
+	*r.Role = Leader
 	return r
 }
 
@@ -96,7 +96,7 @@ func (r *RoleStateMachine) randomTimer() (time.Duration, *time.Timer) {
 }
 
 func (r *RoleStateMachine) isReqVotesSucceed() bool {
-	log.Debugf("current state is: %+v", r.state)
+	log.Debugf("current state is: %+v", r.globalState)
 
 	wg := sync.WaitGroup{}
 	sc := len(config.Config.Servers)
@@ -115,7 +115,7 @@ func (r *RoleStateMachine) isReqVotesSucceed() bool {
 	for i := 0; i < sc; i++ {
 		sum += <-vsc
 	}
-	if sum >= r.state.NodeCount/2+1 {
+	if sum >= r.globalState.NodeCount/2+1 {
 		log.Debug("win this term, become leader, count:", sum)
 		return true
 	}
@@ -124,8 +124,8 @@ func (r *RoleStateMachine) isReqVotesSucceed() bool {
 
 func (r *RoleStateMachine) sendHeartBeat(server string) {
 	log.Debug("append entry to" + server)
-	args := &rpcs.AppendEntriesArgs{Term: r.state.GetTerm(),
-		LeaderId: int32(state.MyID), Entries: nil}
+	args := &rpcs.AppendEntriesArgs{Term: r.globalState.GetTerm(),
+		LeaderId: int32(MyID), Entries: nil}
 	reply := new(rpcs.AppendEntriesReply)
 
 	rpc := rpcs.RealCall{}
@@ -139,8 +139,8 @@ func (r *RoleStateMachine) requestForVote(server string) uint32 {
 	log.Debug("rpc for vote, server is:", server)
 
 	args := &rpcs.ReqVoteArgs{
-		Term:         r.state.GetTerm(),
-		CandidateId:  state.MyID,
+		Term:         r.globalState.GetTerm(),
+		CandidateId:  MyID,
 		LastLogIndex: 1,
 		LastLogTerm:  1,
 	}
