@@ -30,7 +30,7 @@ func init() {
 type State struct {
 	currentTerm uint32
 	votedFor    int32
-	log         []string
+	Log         []string
 
 	inner
 }
