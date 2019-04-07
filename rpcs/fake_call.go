@@ -18,7 +18,7 @@ func NewFakeCall() *FakeCall {
 }
 
 func (c *FakeCall) Call(name, server string, args, reply interface{}) error {
-	log.Debugf("faleCall name: %v server: %v", name, server)
+	log.Debugf("faleCall name: %v server: %v,args: %+v", name, server, args)
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.counter++

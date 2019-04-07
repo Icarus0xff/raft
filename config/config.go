@@ -19,14 +19,14 @@ type ConfStruct struct {
 var Config ConfStruct
 
 func (c *ConfStruct) GetBindAddr() string {
-	return join(c.Bind, c.Port)
+	return JoinAddrPort(c.Bind, c.Port)
 }
 
 func (c *ConfStruct) GetHostAddr() string {
-	return join(c.HostName, c.Port)
+	return JoinAddrPort(c.HostName, c.Port)
 }
 
-func join(addr string, port int) string {
+func JoinAddrPort(addr string, port int) string {
 	return addr + ":" + strconv.Itoa(port)
 }
 

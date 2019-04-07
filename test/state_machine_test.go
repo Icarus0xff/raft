@@ -4,6 +4,7 @@ import (
 	"github.com/ngaut/log"
 	"github.com/stretchr/testify/assert"
 	"raft/config"
+	"raft/logStruct"
 	"raft/rpcs"
 	"raft/state"
 	"raft/stateMachine"
@@ -15,7 +16,7 @@ func TestStateMachine(t *testing.T) {
 	fc := rpcs.NewFakeCall()
 	sm := stateMachine.NewRoleStateMachine(fc)
 
-	go sm.Run()
+	go sm.StartServer("")
 
 	log.Debug("waiting for chan")
 	<-fc.Ch
@@ -28,10 +29,10 @@ func TestServiceCall(t *testing.T) {
 	log.Debug("test service")
 	sm := stateMachine.NewRoleStateMachineDefault()
 
-	go sm.Run()
+	go sm.StartServer("")
 
-	args := &rpcs.CommandArgs{
-		Operation: rpcs.Put,
+	args := &logStruct.OperationLogEntry{
+		Operation: logStruct.PUT,
 		Key:       "fuck",
 		Value:     "shit",
 	}
@@ -39,7 +40,7 @@ func TestServiceCall(t *testing.T) {
 
 	client := rpcs.RealCall{}
 
-	client.Call("Rpc.Do", config.Config.GetBindAddr(), args, reply)
+	client.Call("Rpc.SetGetDelKV", config.Config.GetBindAddr(), args, reply)
 
 	return
 }

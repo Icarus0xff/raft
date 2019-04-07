@@ -2,6 +2,7 @@ package rpcs
 
 import (
 	"github.com/ngaut/log"
+	. "raft/logStruct"
 	"raft/state"
 )
 
@@ -10,7 +11,7 @@ type AppendEntriesArgs struct {
 	LeaderId     int32
 	prevLogIndex int
 	prevLogTerm  int
-	Entries      []int
+	Entries      []OperationLogEntry
 	leaderCommit int
 }
 
@@ -24,12 +25,20 @@ type Rpc int
 func (r *Rpc) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply) error {
 	log.Debug("AppendEntries")
 	reply = new(AppendEntriesReply)
-	if args.Term < state.GetGlobalState().GetTerm() {
-		*reply = AppendEntriesReply{state.GetGlobalState().GetTerm(), false}
+	if args.Term < state.GetGlobalState().CurrentTerm() {
+		*reply = AppendEntriesReply{state.GetGlobalState().CurrentTerm(), false}
 		return nil
 
 	}
-	*reply = AppendEntriesReply{1, true}
+	s := state.GetGlobalState()
+	s.LeaderHeartBeat <- struct{}{}
+	s.Log = append(s.Log, args.Entries...)
+	for _, e := range s.Log {
+		log.Debugf("entry is %+v", e)
+		s.AddLastAppliedIdx()
+		s.AddCommitIdx()
+	}
+	*reply = AppendEntriesReply{s.CurrentTerm(), true}
 	state.GetGlobalState().LeaderHeartBeat <- struct{}{}
 	log.Debug("AppendEntries end")
 	return nil
@@ -51,8 +60,8 @@ var gs = state.GetGlobalState()
 
 func (r *Rpc) RequestVote(args *ReqVoteArgs, reply *ReqVoteReply) error {
 	log.Debugf("args is: %+v", *args)
-	*reply = ReqVoteReply{Term: gs.GetTerm(), VoteGranted: false}
-	if args.Term < gs.GetTerm() {
+	*reply = ReqVoteReply{Term: gs.CurrentTerm(), VoteGranted: false}
+	if args.Term < gs.CurrentTerm() {
 		log.Debug("term is less than current term")
 		return nil
 	}

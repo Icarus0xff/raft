@@ -5,10 +5,9 @@ import (
 	"net"
 	"net/http"
 	"net/rpc"
-	"raft/config"
 )
 
-func init() {
+func RunServer(addr string) {
 	log.Debug("start rpc server")
 	r := new(Rpc)
 	err := rpc.Register(r)
@@ -17,7 +16,7 @@ func init() {
 	}
 	rpc.HandleHTTP()
 
-	l, err := net.Listen("tcp", config.Config.GetBindAddr())
+	l, err := net.Listen("tcp", addr)
 	if err != nil {
 		log.Fatal("listen error:", err)
 	}

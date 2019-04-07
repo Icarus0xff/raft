@@ -18,60 +18,106 @@ type RoleStateMachine struct {
 	Role        *Role
 	client      rpcs.Callee
 	globalState *State
+
+	candidateTimeout *time.Timer
 }
 
 func NewRoleStateMachineDefault() *RoleStateMachine {
+	ri := rand.Intn(10) + timeoutBase
+	timeout := time.Second * time.Duration(ri)
+	timer := time.NewTimer(timeout)
+
+	return &RoleStateMachine{setFollower(), rpcs.RealCall{},
+		GetGlobalState(), timer}
+}
+
+func setFollower() *Role {
 	r := GetGlobalRolePtr()
 	*r = Follower
-	return &RoleStateMachine{r, rpcs.RealCall{}, GetGlobalState()}
+	return r
 }
 
 func NewRoleStateMachine(client rpcs.Callee) *RoleStateMachine {
-	r := GetGlobalRolePtr()
-	*r = Follower
-	return &RoleStateMachine{r, client, GetGlobalState()}
+	ri := rand.Intn(10) + timeoutBase
+	timeout := time.Second * time.Duration(ri)
+	timer := time.NewTimer(timeout)
+
+	return &RoleStateMachine{setFollower(), client,
+		GetGlobalState(), timer}
 }
 
-func (r *RoleStateMachine) Run() {
+func (r *RoleStateMachine) StartServer(addr string) {
+	a := ""
+	if addr == "" {
+		a = config.Config.GetBindAddr()
+	} else {
+		a = addr
+	}
+	rpcs.RunServer(a)
+	r.run()
+}
+func (r *RoleStateMachine) run() {
+
 	for {
 		switch *r.Role {
 		case Follower:
-			r.followerStage().Run()
+			r.followerStage().run()
 		case Candidate:
-			r.candidateStage().Run()
+			r.candidateStage().run()
 		case Leader:
-			r.leaderStage().Run()
+			r.leaderStage().run()
 		}
 	}
 
 }
 
+// 如果收到心跳包则重置当前的选举timer
 func (r *RoleStateMachine) followerStage() *RoleStateMachine {
 	log.Debug("follower stage")
+	ri := rand.Intn(10) + timeoutBase
+	timeout := time.Second * time.Duration(ri)
+	r.candidateTimeout.Reset(timeout)
 
-	delta, timeoutTimer := r.randomTimer()
+	select {
+	case <-r.globalState.LeaderHeartBeat:
+		r.candidateTimeout.Reset(timeout)
+		log.Debugf("timer is reseted")
+	case <-r.candidateTimeout.C:
+		log.Info("timeout become candidate")
+		*r.Role = Candidate
 
-	log.Debugf("random delta is %+v", delta)
+	}
 
-	<-timeoutTimer.C
-
-	*r.Role = Candidate
 	return r
 }
 
 func (r *RoleStateMachine) candidateStage() *RoleStateMachine {
+
 	r.globalState.ElectInit()
 	r.globalState.AddTerm()
+	log.Debugf("added term, current term is", r.globalState.CurrentTerm())
 	if r.isReqVotesSucceed() {
 		*r.Role = Leader
 		return r
 	}
 
-	_, timeoutTimer := r.randomTimer()
-	<-timeoutTimer.C
-	*r.Role = Candidate
-	if GetGlobalState().VoteForMyself() {
-		GetGlobalState().GetVoteFromCandidate()
+	ri := rand.Intn(10) + timeoutBase
+	timeout := time.Second * time.Duration(ri)
+	r.candidateTimeout.Reset(timeout)
+
+	select {
+	case <-r.globalState.LeaderHeartBeat:
+		r.candidateTimeout.Reset(timeout)
+		log.Debugf("timer is reseted")
+		*r.Role = Follower
+		return r
+	case <-r.candidateTimeout.C:
+		log.Info("timeout become candidate")
+		*r.Role = Candidate
+		if GetGlobalState().VoteForMyself() {
+			GetGlobalState().GetVoteFromCandidate()
+		}
+
 	}
 	return r
 }
@@ -124,7 +170,7 @@ func (r *RoleStateMachine) isReqVotesSucceed() bool {
 
 func (r *RoleStateMachine) sendHeartBeat(server string) {
 	log.Debug("append entry to" + server)
-	args := &rpcs.AppendEntriesArgs{Term: r.globalState.GetTerm(),
+	args := &rpcs.AppendEntriesArgs{Term: r.globalState.CurrentTerm(),
 		LeaderId: int32(MyID), Entries: nil}
 	reply := new(rpcs.AppendEntriesReply)
 
@@ -139,7 +185,7 @@ func (r *RoleStateMachine) requestForVote(server string) uint32 {
 	log.Debug("rpc for vote, server is:", server)
 
 	args := &rpcs.ReqVoteArgs{
-		Term:         r.globalState.GetTerm(),
+		Term:         r.globalState.CurrentTerm(),
 		CandidateId:  MyID,
 		LastLogIndex: 1,
 		LastLogTerm:  1,
@@ -148,6 +194,7 @@ func (r *RoleStateMachine) requestForVote(server string) uint32 {
 	err := r.client.Call("Rpc.RequestVote", server, args, reply)
 	if err != nil {
 		log.Error("send vote request error", err)
+		return 0
 	}
 
 	log.Debugf("rpc reply is: %+v from: %v", reply, server)

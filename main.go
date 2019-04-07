@@ -12,7 +12,7 @@ import (
 func main() {
 
 	sm := stateMachine.NewRoleStateMachine(rpcs.RealCall{})
-	sm.Run()
+	sm.StartServer("")
 
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt)

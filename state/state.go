@@ -4,6 +4,7 @@ import (
 	"github.com/ngaut/log"
 	"hash/fnv"
 	"raft/config"
+	. "raft/logStruct"
 	"sync/atomic"
 )
 
@@ -28,11 +29,25 @@ func init() {
 }
 
 type State struct {
-	currentTerm uint32
-	votedFor    int32
-	Log         []string
+	currentTerm    uint32
+	votedFor       int32
+	Log            []OperationLogEntry
+	commitIdx      uint32
+	lastAppliedIdx uint32
 
 	inner
+}
+
+func (s *State) AddLastAppliedIdx() {
+	atomic.AddUint32(&s.commitIdx, 1)
+}
+
+func (s *State) AddCommitIdx() {
+	atomic.AddUint32(&s.lastAppliedIdx, 1)
+}
+
+func (s *State) CurrentTerm() uint32 {
+	return atomic.LoadUint32(&s.currentTerm)
 }
 
 type inner struct {
@@ -65,17 +80,14 @@ func (s *State) AddTerm() uint32 {
 	return atomic.AddUint32(&s.currentTerm, 1)
 }
 
-func (s *State) GetTerm() uint32 {
-	return atomic.LoadUint32(&s.currentTerm)
-}
-
 func (s *State) GetVoteFromCandidate() uint32 {
 	return atomic.AddUint32(&s.myVotesCount, 1)
 }
 
 func newState() *State {
 	c := uint32(len(config.Config.Servers) + 1)
-	return &State{0, notVoted, []string{},
+	return &State{0, notVoted, []OperationLogEntry{},
+		0, 0,
 		inner{0, c,
 			make(chan struct{}), Follower},
 	}
