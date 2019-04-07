@@ -51,7 +51,6 @@ func (s *State) CurrentTerm() uint32 {
 }
 
 type inner struct {
-	myVotesCount    uint32
 	NodeCount       uint32
 	LeaderHeartBeat chan struct{}
 	Role            Role
@@ -61,7 +60,6 @@ const notVoted = -1
 
 func (s *State) ElectInit() {
 	atomic.StoreInt32(&s.votedFor, notVoted)
-	s.myVotesCount = 0
 }
 
 func (s *State) VoteForMyself() bool {
@@ -80,15 +78,11 @@ func (s *State) AddTerm() uint32 {
 	return atomic.AddUint32(&s.currentTerm, 1)
 }
 
-func (s *State) GetVoteFromCandidate() uint32 {
-	return atomic.AddUint32(&s.myVotesCount, 1)
-}
-
 func newState() *State {
 	c := uint32(len(config.Config.Servers) + 1)
 	return &State{0, notVoted, []OperationLogEntry{},
 		0, 0,
-		inner{0, c,
+		inner{c,
 			make(chan struct{}), Follower},
 	}
 }
