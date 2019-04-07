@@ -71,40 +71,44 @@ func (r *RoleStateMachine) run() {
 
 }
 
-// 如果收到心跳包则重置当前的选举timer
-func (r *RoleStateMachine) followerStage() *RoleStateMachine {
-	log.Debug("follower stage")
+func (r *RoleStateMachine) resetTimer() time.Duration {
 	ri := rand.Intn(10) + timeoutBase
 	timeout := time.Second * time.Duration(ri)
 	r.candidateTimeout.Reset(timeout)
+	return timeout
+}
+
+// 如果收到心跳包则重置当前的选举timer
+func (r *RoleStateMachine) followerStage() *RoleStateMachine {
+	log.Debug("follower stage")
+	timeout := r.resetTimer()
 
 	select {
 	case <-r.globalState.LeaderHeartBeat:
 		r.candidateTimeout.Reset(timeout)
 		log.Debugf("timer is reseted")
+		*r.Role = Follower
 	case <-r.candidateTimeout.C:
 		log.Info("timeout become candidate")
 		*r.Role = Candidate
-
 	}
 
 	return r
 }
 
 func (r *RoleStateMachine) candidateStage() *RoleStateMachine {
-
 	r.globalState.ElectInit()
 	r.globalState.AddTerm()
 	log.Debugf("added term, current term is", r.globalState.CurrentTerm())
+	if GetGlobalState().VoteForMyself() {
+		GetGlobalState().GetVoteFromCandidate()
+	}
 	if r.isReqVotesSucceed() {
 		*r.Role = Leader
 		return r
 	}
 
-	ri := rand.Intn(10) + timeoutBase
-	timeout := time.Second * time.Duration(ri)
-	r.candidateTimeout.Reset(timeout)
-
+	timeout := r.resetTimer()
 	select {
 	case <-r.globalState.LeaderHeartBeat:
 		r.candidateTimeout.Reset(timeout)
@@ -114,10 +118,6 @@ func (r *RoleStateMachine) candidateStage() *RoleStateMachine {
 	case <-r.candidateTimeout.C:
 		log.Info("timeout become candidate")
 		*r.Role = Candidate
-		if GetGlobalState().VoteForMyself() {
-			GetGlobalState().GetVoteFromCandidate()
-		}
-
 	}
 	return r
 }
@@ -157,7 +157,7 @@ func (r *RoleStateMachine) isReqVotesSucceed() bool {
 	}
 	wg.Wait()
 
-	var sum uint32
+	var sum uint32 = 1
 	for i := 0; i < sc; i++ {
 		sum += <-vsc
 	}
