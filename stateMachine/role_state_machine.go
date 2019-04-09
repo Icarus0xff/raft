@@ -81,7 +81,7 @@ func (r *RoleStateMachine) resetTimer() {
 func (r *RoleStateMachine) followerStage() *RoleStateMachine {
 	log.Debug("follower stage")
 
-	return r.cddtFollowerSwitch()
+	return r.cddFollowerSwitch()
 }
 
 func (r *RoleStateMachine) candidateStage() *RoleStateMachine {
@@ -95,10 +95,10 @@ func (r *RoleStateMachine) candidateStage() *RoleStateMachine {
 		return r
 	}
 
-	return r.cddtFollowerSwitch()
+	return r.cddFollowerSwitch()
 }
 
-func (r *RoleStateMachine) cddtFollowerSwitch() *RoleStateMachine {
+func (r *RoleStateMachine) cddFollowerSwitch() *RoleStateMachine {
 	r.resetTimer()
 	select {
 	case <-r.globalState.LeaderHeartBeat:
