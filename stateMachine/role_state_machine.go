@@ -19,7 +19,7 @@ type RoleStateMachine struct {
 	client      rpcs.Callee
 	globalState *State
 
-	candidateTimeout *time.Timer
+	cddtTimeout *time.Timer
 }
 
 func NewRoleStateMachineDefault() *RoleStateMachine {
@@ -71,18 +71,17 @@ func (r *RoleStateMachine) run() {
 
 }
 
-func (r *RoleStateMachine) resetTimer() time.Duration {
+func (r *RoleStateMachine) resetTimer() {
 	ri := rand.Intn(10) + timeoutBase
 	timeout := time.Second * time.Duration(ri)
-	r.candidateTimeout.Reset(timeout)
-	return timeout
+	r.cddtTimeout.Reset(timeout)
 }
 
 // 如果收到心跳包则重置当前的选举timer
 func (r *RoleStateMachine) followerStage() *RoleStateMachine {
 	log.Debug("follower stage")
 
-	return r.candidateFollowerMachine()
+	return r.cddtFollowerSwitch()
 }
 
 func (r *RoleStateMachine) candidateStage() *RoleStateMachine {
@@ -96,18 +95,18 @@ func (r *RoleStateMachine) candidateStage() *RoleStateMachine {
 		return r
 	}
 
-	return r.candidateFollowerMachine()
+	return r.cddtFollowerSwitch()
 }
 
-func (r *RoleStateMachine) candidateFollowerMachine() *RoleStateMachine {
-	timeout := r.resetTimer()
+func (r *RoleStateMachine) cddtFollowerSwitch() *RoleStateMachine {
+	r.resetTimer()
 	select {
 	case <-r.globalState.LeaderHeartBeat:
-		r.candidateTimeout.Reset(timeout)
+		r.resetTimer()
 		log.Debugf("recv heartbeat")
 		*r.Role = Follower
 		return r
-	case <-r.candidateTimeout.C:
+	case <-r.cddtTimeout.C:
 		log.Info("candidate timeout")
 		*r.Role = Candidate
 		return r
@@ -161,7 +160,7 @@ func (r *RoleStateMachine) isReqVotesSucceed() bool {
 }
 
 func (r *RoleStateMachine) sendHeartBeat(server string) {
-	log.Debug("append entry to" + server)
+	log.Debug("append entry to " + server)
 	args := &rpcs.AppendEntriesArgs{Term: r.globalState.CurrentTerm(),
 		LeaderId: int32(MyID), Entries: nil}
 	reply := new(rpcs.AppendEntriesReply)
